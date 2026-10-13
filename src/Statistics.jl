@@ -301,7 +301,7 @@ function varm!(R::AbstractArray{S}, A::AbstractArray, m::AbstractArray; correcte
         if rn <= 0
             # Like the out-of-place `_varm` path: a corrected variance over a
             # single element is 0/0 = NaN (or Inf if `m` is not that element)
-            R .= R ./ 0
+            R .= _divzero.(R)
         else
             R .= R .* (1 // rn)
         end
@@ -356,7 +356,7 @@ function _varm(A::AbstractArray, m, corrected::Bool, region)
     rn = prod(ntuple(d->d in region ? size(A, d) : 1, Val(ndims(A)))) - Int(corrected)
     R = centralize_sumabs2(A, m, region)
     if rn <= 0
-        R .= R ./ 0
+        R .= _divzero.(R)
     else
         # Scaling by a Rational rounds only once for floating point eltypes
         # and stays exact for Rational and Integer ones
@@ -369,8 +369,14 @@ varm(A::AbstractArray, m; corrected::Bool=true) = _varm(A, m, corrected, :)
 
 function _varm(A::AbstractArray{T}, m, corrected::Bool, ::Colon) where T
     rn = max(length(A) - Int(corrected), 0)
-    centralize_sumabs2(A, m)/rn
+    s = centralize_sumabs2(A, m)
+    return rn == 0 ? _divzero(s) : s / rn
 end
+
+# `x / 0`, with the canonical `NaN` for `0 / 0`: the NaN a division produces may carry
+# the sign bit on some platforms, and then is not `===` to `NaN`
+_divzero(x::Real) = (r = x / 0; iszero(x) && r isa AbstractFloat ? oftype(r, NaN) : r)
+_divzero(x) = x / 0
 
 
 """
